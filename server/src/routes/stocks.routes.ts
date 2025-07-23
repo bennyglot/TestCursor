@@ -22,6 +22,9 @@ export function createStocksRoutes(stocksController: StocksController): Router {
   // POST /api/stocks/scraping/trigger - Trigger manual scraping
   router.post('/scraping/trigger', stocksController.triggerManualScraping);
 
+  // POST /api/stocks/scraping/force-refresh - Force refresh and broadcast
+  router.post('/scraping/force-refresh', stocksController.forceRefresh);
+
   // GET /api/stocks/:symbol/history - Get stock history
   router.get('/:symbol/history', stocksController.getStockHistory);
 

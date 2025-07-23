@@ -120,6 +120,29 @@ export class StocksController {
     }
   };
 
+  public forceRefresh = async (req: Request, res: Response): Promise<void> => {
+    try {
+      // Force the next broadcast by clearing cache
+      this.stockService.forceNextBroadcast();
+      
+      // Trigger manual scraping which will now definitely broadcast
+      this.cronService.triggerManualRun().catch(error => {
+        console.error('Force refresh failed:', error);
+      });
+
+      const response: ApiResponse<{ status: string }> = {
+        success: true,
+        data: { status: 'force_refreshed' },
+        message: 'Forced data refresh and broadcast triggered',
+        timestamp: new Date()
+      };
+
+      res.json(response);
+    } catch (error) {
+      this.handleError(res, error, 'Failed to force refresh');
+    }
+  };
+
   public getScrapingStatus = async (req: Request, res: Response): Promise<void> => {
     try {
       const status = this.cronService.getStatus();

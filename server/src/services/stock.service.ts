@@ -5,6 +5,7 @@ import { DatabaseStock, DatabaseStockUpdate } from '@/types/database.interface';
 export class StockService {
   private db: Database;
   private lastBroadcastData: StockData[] = [];
+  private hasEverBroadcast: boolean = false;
 
   constructor() {
     this.db = Database.getInstance();
@@ -64,13 +65,15 @@ export class StockService {
   }
 
   public hasDataChanged(newStocks: StockData[]): boolean {
-    // If we have no previous data, consider it as changed
-    if (this.lastBroadcastData.length === 0) {
+    // Always broadcast the first time or if we have no previous data
+    if (!this.hasEverBroadcast || this.lastBroadcastData.length === 0) {
+      console.log(`🎯 First-time data load detected - will broadcast ${newStocks.length} stocks`);
       return true;
     }
 
     // If the number of stocks changed, it's definitely different
     if (newStocks.length !== this.lastBroadcastData.length) {
+      console.log(`📊 Stock count changed: ${this.lastBroadcastData.length} → ${newStocks.length}`);
       return true;
     }
 
@@ -81,26 +84,39 @@ export class StockService {
     // Check if any stock is new or missing
     for (const symbol of newStocksMap.keys()) {
       if (!lastStocksMap.has(symbol)) {
+        console.log(`📈 New stock detected: ${symbol}`);
         return true; // New stock found
       }
     }
 
     for (const symbol of lastStocksMap.keys()) {
       if (!newStocksMap.has(symbol)) {
+        console.log(`📉 Stock removed: ${symbol}`);
         return true; // Stock removed
       }
     }
 
     // Compare individual stock data for changes
+    let changedStocks = 0;
     for (const [symbol, newStock] of newStocksMap) {
       const lastStock = lastStocksMap.get(symbol)!;
 
       // Check significant changes
       if (this.hasStockChanged(lastStock, newStock)) {
-        return true;
+        changedStocks++;
+        console.log(`🔄 ${symbol}: Price ${lastStock.premarketPrice} → ${newStock.premarketPrice}, %Change ${lastStock.percentChange} → ${newStock.percentChange}`);
+        if (changedStocks <= 3) { // Only log first few to avoid spam
+          return true;
+        }
       }
     }
 
+    if (changedStocks > 0) {
+      console.log(`📊 Total stocks with changes: ${changedStocks}`);
+      return true;
+    }
+
+    console.log(`✅ No significant changes detected in ${newStocks.length} stocks`);
     return false; // No significant changes detected
   }
 
@@ -145,7 +161,8 @@ export class StockService {
       ...stock,
       timestamp: new Date(stock.timestamp)
     }));
-    console.log(`Updated last broadcast data with ${stocks.length} stocks`);
+    this.hasEverBroadcast = true;
+    console.log(`📡 Updated last broadcast data with ${stocks.length} stocks`);
   }
 
   public getDataChangesSummary(newStocks: StockData[]): {
@@ -163,7 +180,7 @@ export class StockService {
       removedStocks: [] as string[]
     };
 
-    if (this.lastBroadcastData.length === 0) {
+    if (!this.hasEverBroadcast || this.lastBroadcastData.length === 0) {
       result.hasChanges = true;
       result.summary = `Initial data load with ${newStocks.length} stocks`;
       result.newStocks = newStocks.map(s => s.symbol);
@@ -215,6 +232,12 @@ export class StockService {
       : 'No significant changes detected';
 
     return result;
+  }
+
+  public forceNextBroadcast(): void {
+    console.log(`🔄 Forcing next broadcast by clearing cache`);
+    this.lastBroadcastData = [];
+    this.hasEverBroadcast = false;
   }
 
   public async getLatestStocks(limit: number = 50): Promise<StockData[]> {
