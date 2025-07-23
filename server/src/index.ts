@@ -39,7 +39,7 @@ const database = Database.getInstance();
 const scraperService = new ScraperService();
 const stockService = new StockService();
 const alertService = new AlertService();
-const webSocketService = new WebSocketService(WS_PORT);
+const webSocketService = new WebSocketService(WS_PORT, stockService);
 const cronService = new CronService(
   scraperService,
   stockService,

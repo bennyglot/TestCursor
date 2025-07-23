@@ -7,6 +7,7 @@ import {
   ScrapingStatusMessage 
 } from '@/types/api.interface';
 import { StockData, StockUpdate, ScrapingResult } from '@/types/stock.interface';
+import { StockService } from './stock.service';
 
 interface ConnectedClient {
   id: string;
@@ -19,8 +20,10 @@ export class WebSocketService {
   private wss: WebSocket.Server;
   private clients: Map<string, ConnectedClient> = new Map();
   private heartbeatInterval: NodeJS.Timeout;
+  private stockService: StockService;
 
-  constructor(port: number) {
+  constructor(port: number, stockService: StockService) {
+    this.stockService = stockService;
     this.wss = new WebSocket.Server({ 
       port,
       perMessageDeflate: {
@@ -69,6 +72,11 @@ export class WebSocketService {
         timestamp: new Date()
       });
 
+      // Automatically send current data to new clients
+      setTimeout(() => {
+        this.sendCurrentDataToClient(clientId);
+      }, 1000); // Wait 1 second for connection to stabilize
+
       ws.on('message', (data: Buffer) => {
         try {
           const message = JSON.parse(data.toString());
@@ -102,7 +110,7 @@ export class WebSocketService {
     });
   }
 
-  private handleClientMessage(clientId: string, message: any): void {
+  private async handleClientMessage(clientId: string, message: any): Promise<void> {
     console.log(`Received message from client ${clientId}:`, message);
     
     switch (message.type) {
@@ -115,13 +123,49 @@ export class WebSocketService {
         break;
         
       case 'REQUEST_LATEST_DATA':
-        // This would trigger fetching latest stock data
-        this.sendScrapingStatus('STARTED', 'Fetching latest stock data...');
+        // Send current stock data immediately
+        await this.sendCurrentDataToClient(clientId);
         break;
         
       default:
         console.warn(`Unknown message type from client ${clientId}:`, message.type);
         this.sendError(clientId, `Unknown message type: ${message.type}`);
+    }
+  }
+
+  private async sendCurrentDataToClient(clientId: string): Promise<void> {
+    try {
+      const stocks = await this.stockService.getLatestStocks();
+      const updates = await this.stockService.getStockUpdates();
+      
+      if (stocks.length > 0) {
+        const message: StocksUpdateMessage = {
+          type: 'STOCKS_UPDATE',
+          payload: {
+            stocks,
+            updates,
+            scrapingResult: {
+              success: true,
+              data: stocks,
+              timestamp: new Date(),
+              totalStocks: stocks.length
+            }
+          },
+          timestamp: new Date()
+        };
+        
+        this.sendToClient(clientId, message);
+        console.log(`Sent current data (${stocks.length} stocks) to client ${clientId}`);
+      } else {
+        this.sendToClient(clientId, {
+          type: 'CONNECTION',
+          payload: { message: 'No current data available' },
+          timestamp: new Date()
+        });
+      }
+    } catch (error) {
+      console.error(`Error sending current data to client ${clientId}:`, error);
+      this.sendError(clientId, 'Failed to fetch current data');
     }
   }
 

@@ -84,32 +84,8 @@ export class CronService {
 
       console.log(`Successfully scraped ${scrapingResult.data.length} stocks in ${executionTime}ms`);
 
-      // Check if data has actually changed before processing
-      const hasDataChanged = this.stockService.hasDataChanged(scrapingResult.data);
-      const changesSummary = this.stockService.getDataChangesSummary(scrapingResult.data);
-
-      console.log(`Data change analysis: ${changesSummary.summary}`);
-
-      if (!hasDataChanged) {
-        // No changes detected - still save to database but don't broadcast
-        await this.stockService.saveStockData(scrapingResult.data, {
-          ...scrapingResult,
-          totalStocks: scrapingResult.data.length
-        });
-
-        // Send status update but no data broadcast
-        this.webSocketService.sendScrapingStatus(
-          'SUCCESS', 
-          `Data checked - no changes detected (${scrapingResult.data.length} stocks monitored)`,
-          this.nextRun
-        );
-
-        console.log('⏭️  No data changes detected - skipping WebSocket broadcast');
-        return;
-      }
-
-      // Data has changed - proceed with full processing
-      console.log(`📊 Data changes detected - processing updates...`);
+      // Always process and broadcast data - no change detection
+      console.log(`📊 Processing and broadcasting ${scrapingResult.data.length} stocks...`);
 
       // Analyze changes compared to previous data
       const stockUpdates = await this.stockService.analyzeStockChanges(scrapingResult.data);
@@ -120,13 +96,10 @@ export class CronService {
         totalStocks: scrapingResult.data.length
       });
 
-      // Update the last broadcast data
-      this.stockService.updateLastBroadcastData(scrapingResult.data);
-
       // Check for alerts
       const alerts = await this.alertService.checkForAlerts(scrapingResult.data, stockUpdates);
 
-      // Broadcast updates to connected clients (only when data changed)
+      // Always broadcast updates to connected clients
       this.webSocketService.broadcastStockUpdate(scrapingResult.data, stockUpdates, scrapingResult);
 
       // Send individual alerts
@@ -139,8 +112,8 @@ export class CronService {
         );
       }
 
-      // Notify clients of successful completion with details
-      const statusMessage = `${changesSummary.summary} - ${alerts.length} alerts generated`;
+      // Notify clients of successful completion
+      const statusMessage = `Processed ${scrapingResult.data.length} stocks - ${alerts.length} alerts generated`;
       this.webSocketService.sendScrapingStatus('SUCCESS', statusMessage, this.nextRun);
 
       // Clean old data periodically (once per hour)
