@@ -9,7 +9,7 @@ export interface ApiResponse<T = any> {
 }
 
 export interface WebSocketMessage {
-  type: 'STOCKS_UPDATE' | 'ALERT' | 'ERROR' | 'CONNECTION' | 'SCRAPING_STATUS';
+  type: 'STOCKS_UPDATE' | 'ALERT' | 'ERROR' | 'CONNECTION' | 'SCRAPING_STATUS' | 'NO_CHANGES';
   payload: any;
   timestamp: Date;
 }
@@ -20,6 +20,12 @@ export interface StocksUpdateMessage extends WebSocketMessage {
     stocks: StockData[];
     updates: StockUpdate[];
     scrapingResult: ScrapingResult;
+    changesSummary?: {
+      changedStocks: string[];
+      newStocks: string[];
+      removedStocks: string[];
+      summary: string;
+    };
   };
 }
 
@@ -39,6 +45,18 @@ export interface ScrapingStatusMessage extends WebSocketMessage {
     status: 'STARTED' | 'SUCCESS' | 'ERROR';
     message: string;
     nextRun?: Date;
+    hasDataChanges?: boolean;
+    changesSummary?: string;
+  };
+}
+
+export interface NoChangesMessage extends WebSocketMessage {
+  type: 'NO_CHANGES';
+  payload: {
+    message: string;
+    stockCount: number;
+    lastUpdate: Date;
+    nextCheck: Date;
   };
 }
 

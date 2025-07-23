@@ -4,6 +4,7 @@ import { DatabaseStock, DatabaseStockUpdate } from '@/types/database.interface';
 
 export class StockService {
   private db: Database;
+  private lastBroadcastData: StockData[] = [];
 
   constructor() {
     this.db = Database.getInstance();
@@ -60,6 +61,160 @@ export class StockService {
       console.error('Error saving stock data:', error);
       throw error;
     }
+  }
+
+  public hasDataChanged(newStocks: StockData[]): boolean {
+    // If we have no previous data, consider it as changed
+    if (this.lastBroadcastData.length === 0) {
+      return true;
+    }
+
+    // If the number of stocks changed, it's definitely different
+    if (newStocks.length !== this.lastBroadcastData.length) {
+      return true;
+    }
+
+    // Create maps for easier comparison
+    const newStocksMap = new Map(newStocks.map(stock => [stock.symbol, stock]));
+    const lastStocksMap = new Map(this.lastBroadcastData.map(stock => [stock.symbol, stock]));
+
+    // Check if any stock is new or missing
+    for (const symbol of newStocksMap.keys()) {
+      if (!lastStocksMap.has(symbol)) {
+        return true; // New stock found
+      }
+    }
+
+    for (const symbol of lastStocksMap.keys()) {
+      if (!newStocksMap.has(symbol)) {
+        return true; // Stock removed
+      }
+    }
+
+    // Compare individual stock data for changes
+    for (const [symbol, newStock] of newStocksMap) {
+      const lastStock = lastStocksMap.get(symbol)!;
+
+      // Check significant changes
+      if (this.hasStockChanged(lastStock, newStock)) {
+        return true;
+      }
+    }
+
+    return false; // No significant changes detected
+  }
+
+  private hasStockChanged(lastStock: StockData, newStock: StockData): boolean {
+    // Define thresholds for what constitutes a "change"
+    const PRICE_THRESHOLD = 0.01; // $0.01 price change
+    const PERCENT_THRESHOLD = 0.01; // 0.01% change
+    const VOLUME_THRESHOLD = 1000; // 1000 volume change
+    const RANK_THRESHOLD = 0; // Any rank change
+
+    // Check for significant price change
+    if (Math.abs(newStock.premarketPrice - lastStock.premarketPrice) > PRICE_THRESHOLD) {
+      return true;
+    }
+
+    // Check for significant percentage change
+    if (Math.abs(newStock.percentChange - lastStock.percentChange) > PERCENT_THRESHOLD) {
+      return true;
+    }
+
+    // Check for significant volume change
+    if (Math.abs(newStock.premarketVolume - lastStock.premarketVolume) > VOLUME_THRESHOLD) {
+      return true;
+    }
+
+    // Check for rank change
+    if (Math.abs(newStock.rank - lastStock.rank) > RANK_THRESHOLD) {
+      return true;
+    }
+
+    // Check for company name change (rare but possible)
+    if (newStock.companyName !== lastStock.companyName) {
+      return true;
+    }
+
+    return false;
+  }
+
+  public updateLastBroadcastData(stocks: StockData[]): void {
+    // Deep clone the data to avoid reference issues
+    this.lastBroadcastData = stocks.map(stock => ({
+      ...stock,
+      timestamp: new Date(stock.timestamp)
+    }));
+    console.log(`Updated last broadcast data with ${stocks.length} stocks`);
+  }
+
+  public getDataChangesSummary(newStocks: StockData[]): {
+    hasChanges: boolean;
+    summary: string;
+    changedStocks: string[];
+    newStocks: string[];
+    removedStocks: string[];
+  } {
+    const result = {
+      hasChanges: false,
+      summary: '',
+      changedStocks: [] as string[],
+      newStocks: [] as string[],
+      removedStocks: [] as string[]
+    };
+
+    if (this.lastBroadcastData.length === 0) {
+      result.hasChanges = true;
+      result.summary = `Initial data load with ${newStocks.length} stocks`;
+      result.newStocks = newStocks.map(s => s.symbol);
+      return result;
+    }
+
+    const newStocksMap = new Map(newStocks.map(stock => [stock.symbol, stock]));
+    const lastStocksMap = new Map(this.lastBroadcastData.map(stock => [stock.symbol, stock]));
+
+    // Find new stocks
+    for (const symbol of newStocksMap.keys()) {
+      if (!lastStocksMap.has(symbol)) {
+        result.newStocks.push(symbol);
+        result.hasChanges = true;
+      }
+    }
+
+    // Find removed stocks
+    for (const symbol of lastStocksMap.keys()) {
+      if (!newStocksMap.has(symbol)) {
+        result.removedStocks.push(symbol);
+        result.hasChanges = true;
+      }
+    }
+
+    // Find changed stocks
+    for (const [symbol, newStock] of newStocksMap) {
+      const lastStock = lastStocksMap.get(symbol);
+      if (lastStock && this.hasStockChanged(lastStock, newStock)) {
+        result.changedStocks.push(symbol);
+        result.hasChanges = true;
+      }
+    }
+
+    // Generate summary
+    const summaryParts = [];
+    if (result.newStocks.length > 0) {
+      summaryParts.push(`${result.newStocks.length} new`);
+    }
+    if (result.changedStocks.length > 0) {
+      summaryParts.push(`${result.changedStocks.length} updated`);
+    }
+    if (result.removedStocks.length > 0) {
+      summaryParts.push(`${result.removedStocks.length} removed`);
+    }
+
+    result.summary = summaryParts.length > 0 
+      ? `Changes detected: ${summaryParts.join(', ')} stocks`
+      : 'No significant changes detected';
+
+    return result;
   }
 
   public async getLatestStocks(limit: number = 50): Promise<StockData[]> {

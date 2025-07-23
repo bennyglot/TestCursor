@@ -84,6 +84,33 @@ export class CronService {
 
       console.log(`Successfully scraped ${scrapingResult.data.length} stocks in ${executionTime}ms`);
 
+      // Check if data has actually changed before processing
+      const hasDataChanged = this.stockService.hasDataChanged(scrapingResult.data);
+      const changesSummary = this.stockService.getDataChangesSummary(scrapingResult.data);
+
+      console.log(`Data change analysis: ${changesSummary.summary}`);
+
+      if (!hasDataChanged) {
+        // No changes detected - still save to database but don't broadcast
+        await this.stockService.saveStockData(scrapingResult.data, {
+          ...scrapingResult,
+          totalStocks: scrapingResult.data.length
+        });
+
+        // Send status update but no data broadcast
+        this.webSocketService.sendScrapingStatus(
+          'SUCCESS', 
+          `Data checked - no changes detected (${scrapingResult.data.length} stocks monitored)`,
+          this.nextRun
+        );
+
+        console.log('⏭️  No data changes detected - skipping WebSocket broadcast');
+        return;
+      }
+
+      // Data has changed - proceed with full processing
+      console.log(`📊 Data changes detected - processing updates...`);
+
       // Analyze changes compared to previous data
       const stockUpdates = await this.stockService.analyzeStockChanges(scrapingResult.data);
       
@@ -93,10 +120,13 @@ export class CronService {
         totalStocks: scrapingResult.data.length
       });
 
+      // Update the last broadcast data
+      this.stockService.updateLastBroadcastData(scrapingResult.data);
+
       // Check for alerts
       const alerts = await this.alertService.checkForAlerts(scrapingResult.data, stockUpdates);
 
-      // Broadcast updates to connected clients
+      // Broadcast updates to connected clients (only when data changed)
       this.webSocketService.broadcastStockUpdate(scrapingResult.data, stockUpdates, scrapingResult);
 
       // Send individual alerts
@@ -109,25 +139,22 @@ export class CronService {
         );
       }
 
-      // Notify clients of successful completion
-      this.webSocketService.sendScrapingStatus(
-        'SUCCESS', 
-        `Successfully updated ${scrapingResult.data.length} stocks with ${stockUpdates.length} changes`,
-        this.nextRun
-      );
+      // Notify clients of successful completion with details
+      const statusMessage = `${changesSummary.summary} - ${alerts.length} alerts generated`;
+      this.webSocketService.sendScrapingStatus('SUCCESS', statusMessage, this.nextRun);
 
       // Clean old data periodically (once per hour)
       if (this.shouldCleanOldData()) {
         await this.stockService.cleanOldData(30); // Keep 30 days of data
       }
 
-      console.log(`=== Scraping task completed in ${executionTime}ms ===`);
+      console.log(`✅ Scraping task completed in ${executionTime}ms - Data changes broadcasted`);
 
     } catch (error) {
       const executionTime = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       
-      console.error(`Scraping task failed after ${executionTime}ms:`, error);
+      console.error(`❌ Scraping task failed after ${executionTime}ms:`, error);
       
       this.webSocketService.sendScrapingStatus('ERROR', `Task failed: ${errorMessage}`);
       
@@ -173,7 +200,7 @@ export class CronService {
   }
 
   public async triggerManualRun(): Promise<void> {
-    console.log('Manual scraping task triggered');
+    console.log('🔄 Manual scraping task triggered');
     await this.runScrapingTask();
   }
 } 
