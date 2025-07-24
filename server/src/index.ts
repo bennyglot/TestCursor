@@ -54,6 +54,7 @@ const alertsController = new AlertsController(alertService);
 // API routes
 app.use('/api', createApiRoutes(stocksController, alertsController));
 
+//sd
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({

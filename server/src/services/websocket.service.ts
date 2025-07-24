@@ -19,33 +19,20 @@ interface ConnectedClient {
 export class WebSocketService {
   private wss: WebSocket.Server;
   private clients: Map<string, ConnectedClient> = new Map();
-  private heartbeatInterval: NodeJS.Timeout;
   private stockService: StockService;
+  private heartbeatInterval!: NodeJS.Timeout;
 
   constructor(port: number, stockService: StockService) {
     this.stockService = stockService;
     this.wss = new WebSocket.Server({ 
       port,
-      perMessageDeflate: {
-        zlibDeflateOptions: {
-          chunkSize: 1024,
-          windowBits: 13,
-          memLevel: 7,
-        },
-        zlibInflateOptions: {
-          chunkSize: 1024,
-          windowBits: 13,
-          memLevel: 7,
-        },
-        concurrencyLimit: 10,
-        threshold: 1024,
-      }
+      perMessageDeflate: false,
+      maxPayload: 1024 * 1024 // 1MB max message size
     });
-
-    this.setupServer();
-    this.startHeartbeat();
     
     console.log(`WebSocket server started on port ${port}`);
+    this.setupServer();
+    this.startHeartbeat();
   }
 
   private setupServer(): void {
@@ -217,13 +204,18 @@ export class WebSocketService {
   }
 
   public sendScrapingStatus(status: 'STARTED' | 'SUCCESS' | 'ERROR', message: string, nextRun?: Date): void {
+    const payload: { status: 'STARTED' | 'SUCCESS' | 'ERROR'; message: string; nextRun?: Date } = {
+      status,
+      message
+    };
+
+    if (nextRun) {
+      payload.nextRun = nextRun;
+    }
+
     const statusMessage: ScrapingStatusMessage = {
       type: 'SCRAPING_STATUS',
-      payload: {
-        status,
-        message,
-        nextRun
-      },
+      payload,
       timestamp: new Date()
     };
 

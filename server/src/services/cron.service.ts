@@ -164,12 +164,24 @@ export class CronService {
     nextRun?: Date;
     intervalMinutes: number;
   } {
-    return {
+    const status = {
       isRunning: this.isRunning,
-      lastRun: this.lastRun,
-      nextRun: this.nextRun,
       intervalMinutes: parseInt(process.env.SCRAPING_INTERVAL_MINUTES || '1')
+    } as {
+      isRunning: boolean;
+      lastRun?: Date;
+      nextRun?: Date;
+      intervalMinutes: number;
     };
+
+    if (this.lastRun) {
+      status.lastRun = this.lastRun;
+    }
+    if (this.nextRun) {
+      status.nextRun = this.nextRun;
+    }
+
+    return status;
   }
 
   public async triggerManualRun(): Promise<void> {

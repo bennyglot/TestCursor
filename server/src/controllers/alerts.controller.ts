@@ -17,7 +17,7 @@ export class AlertsController {
       const response: ApiResponse<AlertRule[]> = {
         success: true,
         data: rules,
-        message: `Retrieved ${rules.length} alert rules`,
+        message: 'Alert rules retrieved successfully',
         timestamp: new Date()
       };
 
@@ -34,7 +34,7 @@ export class AlertsController {
       const response: ApiResponse<AlertRule[]> = {
         success: true,
         data: rules,
-        message: `Retrieved ${rules.length} active alert rules`,
+        message: 'Active alert rules retrieved successfully',
         timestamp: new Date()
       };
 
@@ -110,7 +110,16 @@ export class AlertsController {
 
   public updateAlertRule = async (req: Request, res: Response): Promise<void> => {
     try {
-      const ruleId = parseInt(req.params.id);
+      if (!req.params.id) {
+        res.status(400).json({
+          success: false,
+          error: 'Alert rule ID is required',
+          timestamp: new Date()
+        });
+        return;
+      }
+
+      const ruleId = parseInt(req.params.id ?? '');
       if (isNaN(ruleId)) {
         res.status(400).json({
           success: false,
@@ -151,7 +160,7 @@ export class AlertsController {
       }
 
       const updates: Partial<AlertRule> = {};
-      if (symbol !== undefined) updates.symbol = symbol.toUpperCase();
+      if (symbol !== undefined) updates.symbol = symbol?.toUpperCase() || undefined;
       if (minPercentChange !== undefined) updates.minPercentChange = minPercentChange;
       if (maxPercentChange !== undefined) updates.maxPercentChange = maxPercentChange;
       if (minVolume !== undefined) updates.minVolume = minVolume;
@@ -174,7 +183,16 @@ export class AlertsController {
 
   public deleteAlertRule = async (req: Request, res: Response): Promise<void> => {
     try {
-      const ruleId = parseInt(req.params.id);
+      if (!req.params.id) {
+        res.status(400).json({
+          success: false,
+          error: 'Alert rule ID is required',
+          timestamp: new Date()
+        });
+        return;
+      }
+
+      const ruleId = parseInt(req.params.id ?? '');
       if (isNaN(ruleId)) {
         res.status(400).json({
           success: false,

@@ -153,45 +153,47 @@ export class AlertService {
 
   private checkTopPerformers(stocks: StockData[]): AlertTrigger[] {
     const alerts: AlertTrigger[] = [];
-
-    // Top 3 performers
     const topPerformers = stocks
-      .filter(s => s.rank <= 3)
-      .sort((a, b) => a.rank - b.rank);
+      .filter(stock => stock.percentChange >= 50) // 50%+ gains
+      .slice(0, 5); // Top 5 performers
 
-    topPerformers.forEach((stock, index) => {
+    for (const stock of topPerformers) {
       alerts.push({
         stock,
-        update: {
-          id: 0,
-          stockId: stock.id || 0,
-          previousData: stock,
-          currentData: stock,
-          changeType: 'NEW',
-          timestamp: stock.timestamp
-        },
+        update: {} as StockUpdate, // Empty update for top performers
         alertType: 'TOP_PERFORMER',
-        message: `${stock.symbol} is #${stock.rank} premarket gainer with ${stock.percentChange.toFixed(2)}% gain`
+        message: `${stock.symbol} is a top performer with ${stock.percentChange.toFixed(2)}% gain`
       });
-    });
+    }
 
     return alerts;
   }
 
+  private formatVolume(volume: number): string {
+    if (volume >= 1000000) {
+      return `${(volume / 1000000).toFixed(1)}M`;
+    } else if (volume >= 1000) {
+      return `${(volume / 1000).toFixed(1)}K`;
+    }
+    return volume.toString();
+  }
+
+  // Alert Rule CRUD operations
   public async createAlertRule(rule: Omit<AlertRule, 'id' | 'createdAt'>): Promise<number> {
     const result = await this.db.run(
-      `INSERT INTO alert_rules (symbol, min_percent_change, max_percent_change, min_volume, enabled)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO alert_rules (symbol, min_percent_change, max_percent_change, min_volume, enabled, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         rule.symbol || null,
         rule.minPercentChange || null,
         rule.maxPercentChange || null,
         rule.minVolume || null,
-        rule.enabled ? 1 : 0
+        rule.enabled ? 1 : 0,
+        new Date().toISOString()
       ]
     );
 
-    return result.lastID!;
+    return result.lastID as number;
   }
 
   public async updateAlertRule(id: number, updates: Partial<AlertRule>): Promise<void> {
@@ -200,30 +202,35 @@ export class AlertService {
 
     if (updates.symbol !== undefined) {
       setParts.push('symbol = ?');
-      values.push(updates.symbol);
+      values.push(updates.symbol || null);
     }
+
     if (updates.minPercentChange !== undefined) {
       setParts.push('min_percent_change = ?');
-      values.push(updates.minPercentChange);
+      values.push(updates.minPercentChange || null);
     }
+
     if (updates.maxPercentChange !== undefined) {
       setParts.push('max_percent_change = ?');
-      values.push(updates.maxPercentChange);
+      values.push(updates.maxPercentChange || null);
     }
+
     if (updates.minVolume !== undefined) {
       setParts.push('min_volume = ?');
-      values.push(updates.minVolume);
+      values.push(updates.minVolume || null);
     }
+
     if (updates.enabled !== undefined) {
       setParts.push('enabled = ?');
       values.push(updates.enabled ? 1 : 0);
     }
 
-    if (setParts.length === 0) return;
+    if (setParts.length === 0) {
+      throw new Error('No updates provided');
+    }
 
-    setParts.push('updated_at = CURRENT_TIMESTAMP');
     values.push(id);
-
+    
     await this.db.run(
       `UPDATE alert_rules SET ${setParts.join(', ')} WHERE id = ?`,
       values
@@ -244,28 +251,26 @@ export class AlertService {
     return rules.map(this.mapDatabaseRuleToAlertRule);
   }
 
-  private mapDatabaseRuleToAlertRule(dbRule: DatabaseAlertRule): AlertRule {
-    return {
+  private mapDatabaseRuleToAlertRule = (dbRule: DatabaseAlertRule): AlertRule => {
+    const rule: AlertRule = {
       id: dbRule.id,
-      symbol: dbRule.symbol || undefined,
-      minPercentChange: dbRule.min_percent_change || undefined,
-      maxPercentChange: dbRule.max_percent_change || undefined,
-      minVolume: dbRule.min_volume || undefined,
       enabled: dbRule.enabled === 1,
       createdAt: new Date(dbRule.created_at)
     };
-  }
 
-  private formatVolume(volume: number): string {
-    if (volume >= 1000000000) {
-      return (volume / 1000000000).toFixed(1) + 'B';
+    if (dbRule.symbol) {
+      rule.symbol = dbRule.symbol;
     }
-    if (volume >= 1000000) {
-      return (volume / 1000000).toFixed(1) + 'M';
+    if (dbRule.min_percent_change !== null && dbRule.min_percent_change !== undefined) {
+      rule.minPercentChange = dbRule.min_percent_change;
     }
-    if (volume >= 1000) {
-      return (volume / 1000).toFixed(1) + 'K';
+    if (dbRule.max_percent_change !== null && dbRule.max_percent_change !== undefined) {
+      rule.maxPercentChange = dbRule.max_percent_change;
     }
-    return volume.toString();
-  }
+    if (dbRule.min_volume !== null && dbRule.min_volume !== undefined) {
+      rule.minVolume = dbRule.min_volume;
+    }
+
+    return rule;
+  };
 } 

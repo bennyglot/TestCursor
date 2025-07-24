@@ -89,6 +89,23 @@ export class StocksController {
     }
   };
 
+  public getScrapingStatus = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const status = this.cronService.getStatus();
+
+      const response: ApiResponse<typeof status> = {
+        success: true,
+        data: status,
+        message: 'Retrieved scraping status',
+        timestamp: new Date()
+      };
+
+      res.json(response);
+    } catch (error) {
+      this.handleError(res, error, 'Failed to retrieve scraping status');
+    }
+  };
+
   public triggerManualScraping = async (req: Request, res: Response): Promise<void> => {
     try {
       // Check if scraping is already running
@@ -143,56 +160,6 @@ export class StocksController {
     }
   };
 
-  public getScrapingStatus = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const status = this.cronService.getStatus();
-
-      const response: ApiResponse<typeof status> = {
-        success: true,
-        data: status,
-        message: 'Retrieved scraping status',
-        timestamp: new Date()
-      };
-
-      res.json(response);
-    } catch (error) {
-      this.handleError(res, error, 'Failed to retrieve scraping status');
-    }
-  };
-
-  public searchStocks = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { query, limit = 20 } = req.query;
-      
-      if (!query || typeof query !== 'string') {
-        res.status(400).json({
-          success: false,
-          error: 'Search query is required',
-          timestamp: new Date()
-        });
-        return;
-      }
-
-      const searchTerm = query.toUpperCase().trim();
-      const searchLimit = Math.min(parseInt(limit as string) || 20, 50);
-
-      // This would typically search through cached stock data
-      // For now, return empty results
-      const stocks: StockData[] = [];
-
-      const response: ApiResponse<StockData[]> = {
-        success: true,
-        data: stocks,
-        message: `Found ${stocks.length} stocks matching "${query}"`,
-        timestamp: new Date()
-      };
-
-      res.json(response);
-    } catch (error) {
-      this.handleError(res, error, 'Failed to search stocks');
-    }
-  };
-
   public getTopGainers = async (req: Request, res: Response): Promise<void> => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 10, 20);
@@ -214,6 +181,44 @@ export class StocksController {
       res.json(response);
     } catch (error) {
       this.handleError(res, error, 'Failed to retrieve top gainers');
+    }
+  };
+
+  public searchStocks = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { query, limit = 20 } = req.query;
+      
+      if (!query || typeof query !== 'string') {
+        res.status(400).json({
+          success: false,
+          error: 'Search query is required',
+          timestamp: new Date()
+        });
+        return;
+      }
+
+      const searchTerm = query.toUpperCase().trim();
+      const searchLimit = Math.min(parseInt(limit as string) || 20, 50);
+
+      // Get all stocks and filter by symbol or company name
+      const stocks = await this.stockService.getLatestStocks(100); // Get more stocks for searching
+      const filteredStocks = stocks
+        .filter(stock => 
+          stock.symbol.includes(searchTerm) || 
+          stock.companyName.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .slice(0, searchLimit);
+
+      const response: ApiResponse<StockData[]> = {
+        success: true,
+        data: filteredStocks,
+        message: `Found ${filteredStocks.length} stocks matching "${query}"`,
+        timestamp: new Date()
+      };
+
+      res.json(response);
+    } catch (error) {
+      this.handleError(res, error, 'Failed to search stocks');
     }
   };
 
